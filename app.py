@@ -67,3 +67,33 @@ def run():
     if choice=='User':
         st.markdown('''<h4 style='text-align:left,color:#021659;'>Please Upload your resume to get smart recommendataion</h4>''',unsafe_allow_html=True)
         pdff=st.file_uploader("Choose your Resume",type=['pdf'])
+        if pdff is not None:
+            with st.spinner('Uploading your Resume..'):
+                time.sleep(5)
+            save_image_path='./Uploaded_Resume/'+pdff.name
+            with open(save_image_path,"wb") as f:
+                f.write(pdff.getbuffer())
+            show_pdf(save_image_path)
+            resumedata=ResumeParser(save_image_path).get_extracted_data()
+            if resumedata:
+                resumet=pdf_reader(save_image_path)
+                st.header("**Resume Analysis**")
+                st.success("Hello "+resumedata['name'])
+                st.subheader("Your Basic info...:-")
+                try:
+                    st.text('Name: '+resumedata['name'])
+                    st.text('Email: '+resumedata['email'])
+                    st.text('Contact: '+resumedata['mobile_number'])
+                    st.text('Resume Pages: '+str(resumedata['no_of_pages']))
+                except:
+                    pass
+                candl=''
+                if resumedata['no_of_pages']==1:
+                    candl='Fresher'
+                    st.markdown('''<h4 style='text-align: left; color: #d73b5c;'>You are at Fresher level!</h4>''',unsafe_allow_html=True)
+                elif resumedata['no_of_pages']==2:
+                    candl='Intermediate'
+                    st.markdown('''<h4 style='text-align: left; color: #d73b5c;'>You are at Intermediate level!</h4>''')
+                else:
+                    candl='Experienced'
+                    st.markdown('''<h4 style='text-align: left; color: #d73b5c;'>You are at Experienced level!</h4>''')
