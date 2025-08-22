@@ -3,7 +3,7 @@ import pandas as pd
 import base64,random
 #we use base64 to we need to read that pdf as binary to work with it 
 import time,datetime
-
+from courses import ds_course,web_course,android_course,ios_course,uiux_course,resume_videos,interview_videos
 #Now Libraries to parse the resume pdf files
 import nltk
 nltk.download('stopwords')
@@ -20,13 +20,40 @@ from PIL import Image
 import pymysql
 #use to connect to the database
 # from courses import ds_course,web_course,android_course,ios_course,uiux_course,resume_videos,interview_videos
-import pafy #for uploading yt videos
-import plotly.express as px #to create visualization to admin session
+# import os
+# os.environ["PAFY_BACKEND"] = "yt-dlp"  # Optional, for consistent environment
 
+# import pafy
+# pafy.set_backend("yt-dlp")  # Use yt-dlp backend explicitly
+from yt_dlp import YoutubeDL
+import plotly.express as px #to create visualization to admin session
 
 #connecting to the Database
 connection=pymysql.connect(host='localhost',user='root',password='Kartik@#4279',db='airesumeanalyzer')
 cursor=connection.cursor()
+def fetch_yt_video(link):
+    ydl_opts = {}
+    with YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(link, download=False)
+        return info.get('title', None)
+def get_table_download_link(df,filename,text):
+    csv=df.to_csv(index=False)
+    b64=base64.b64encode(csv.encode()).decode()
+    href=f'<a href="data:file/csv;base64,{b64}"download="{filename}">{text}</a>'
+    return href
+def pdf_reader(file):
+    rm=PDFResourceManager()
+    ffh=io.StringIO()
+    converter=TextConverter(rm,ffh,laparams=LAParams())
+    pi=PDFPageInterpreter(rm,converter)
+    with open(file,'rb') as fh:
+        for page in PDFPage.get_pages(fh,caching=True,check_extractable=True):
+            pi.process_page(page)
+            print(page)
+        text=ffh.getvalue()
+    converter.close()
+    ffh.close()
+    return text
 def show_pdf(filep):
     # Open the given PDF file in binary read mode
     with open(filep, "rb") as f:
@@ -38,9 +65,23 @@ def show_pdf(filep):
 
     # Render the iframe inside the Streamlit app, allowing HTML rendering
     st.markdown(pdf_display, unsafe_allow_html=True)
+# def show_pdf(file_path)
+def course_recommender(course_list):
+    st.subheader("**Courses & Certificate Recommendation**")
+    c=0
+    recc=[]
+    noor=st.slider('Choose Number of courses you want to be recommend')
+    random.shuffle(course_list)
+    for cname,clink in course_list:
+        c+=1
+        st.markdown(f"({c})[{cname}]({clink})")
+        recc.append(cname)
+        if c==noor:
+            break
+    return recc
 def insert_data(name,email,res_score,timestamp,no_of_pages,reco_field,cand_level,skills,recommended_skills,courses):
     dbname='user_data'
-    insql="INSERT INTO"+dbname+"""values(0,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
+    insql="INSERT INTO "+dbname+""" values(0,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
     rec_values=(name,email,str(res_score),timestamp,str(no_of_pages),reco_field,cand_level,skills,recommended_skills,courses)
     cursor.execute(insql,rec_values)
     connection.commit()
@@ -56,14 +97,14 @@ def run():
     st.title("AI Resume Analyzer")
     st.sidebar.markdown('# Choose User')
     activites=["User","Admin"]
-    choice=st.sidebar.selectionbox("Choose among the given option:",activites)
+    choice=st.sidebar.selectbox("Choose among the given option:",activites)
     link='[Developed by Kartik Mehta](https://www.linkedin.com/in/mehta-kartik/)'
     st.sidebar.markdown(link,unsafe_allow_html=True)
     #create a database if not exist
     db_sql="""CREATE DATABASE IF NOT EXISTS airesumeanalyzer"""
     cursor.execute(db_sql)
     db_table_name='user_data'
-    tablesql="CREATE TABLE IF NOT EXISTS"+db_table_name+"""(ID INT NOT NULL AUTO_INCREMENT,Name varchar(500) NOT NULL,
+    tablesql="CREATE TABLE IF NOT EXISTS "+db_table_name+""" (ID INT NOT NULL AUTO_INCREMENT,Name varchar(500) NOT NULL,
     EMAIL_ID VARCHAR(500) NOT NULL,
     resume_score varchar(8) NOT NULL,
     Timestamp varchar(50) NOT NULL,
@@ -105,12 +146,12 @@ def run():
                     st.markdown('''<h4 style='text-align: left; color: #d73b5c;'>You are at Fresher level!</h4>''',unsafe_allow_html=True)
                 elif resumedata['no_of_pages']==2:
                     candl='Intermediate'
-                    st.markdown('''<h4 style='text-align: left; color: #d73b5c;'>You are at Intermediate level!</h4>''')
+                    st.markdown('''<h4 style='text-align: left; color: #d73b5c;'>You are at Intermediate level!</h4>''',unsafe_allow_html=True)
                 elif resumedata['no_of_pages']>=3:
                     candl='Experienced'
-                    st.markdown('''<h4 style='text-align: left; color: #d73b5c;'>You are at Experienced level!</h4>''')
+                    st.markdown('''<h4 style='text-align: left; color: #d73b5c;'>You are at Experienced level!</h4>''',unsafe_allow_html=True)
                 ##Now turn for skills
-                keywords=st_tags(label="### Your Current Skills",text='See our skills recommendation below',value=resume_data['skills'],key='1')
+                keywords=st_tags(label="### Your Current Skills",text='See our skills recommendation below',value=resumedata['skills'],key='1')
                 ##  keywords
                 ds_keyword = ['tensorflow','keras','pytorch','machine learning','deep Learning','flask','streamlit']
                 web_keyword = ['react', 'django', 'node jS', 'react js', 'php', 'laravel', 'magento', 'wordpress',
@@ -123,7 +164,7 @@ def run():
                 reco_field=''
                 reco_course=''
                 #Course Recommendation
-                for i in resume_data['skills']:
+                for i in resumedata['skills']:
                     #Data Science Recommendation
                     if i.lower() in ds_keyword:
                         print(i.lower())
@@ -182,4 +223,100 @@ def run():
                         st.markdown('''<h4 style='text-align: left; color: #1ed760;'>Adding this skills to resume will boost🚀 the chances of getting a Job💼</h4>''',unsafe_allow_html=True)
                         rec_course = course_recommender(uiux_course)
                         break
-                    
+                #insert into table
+                ts=time.time()
+                curd=datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d')
+                curt=datetime.datetime.fromtimestamp(ts).strftime('%H-%M-%S')
+                timestamp=str(curd+" "+curt)
+                #Resume Writting Suggestions
+                st.subheader("**Resume Tips and Ideas")
+                resume_score=0
+                if 'Objective' in resumet:
+                    resume_score=resume_score+20
+                    st.markdown('''<h5 style='text-align':left; color:#1ed760;>[+]Awesome you have added Objective</h5>''',unsafe_allow_html=True)
+                else:
+                    st.markdown('''<h5 style='text-align: left; color: #000000;'>[-] Please add your career objective, it will give your career intension to the Recruiters.</h5>''',unsafe_allow_html=True)
+                if 'Declaration'  in resumet:
+                    resume_score = resume_score + 20
+                    st.markdown('''<h5 style='text-align: left; color: #1ed760;'>[+] Awesome! You have added Delcaration/h4>''',unsafe_allow_html=True)
+                else:
+                    st.markdown('''<h5 style='text-align: left; color: #000000;'>[-] Please add Declaration. It will give the assurance that everything written on your resume is true and fully acknowledged by you</h4>''',unsafe_allow_html=True)
+
+                if 'Hobbies' or 'Interests'in resumet:
+                    resume_score = resume_score + 20
+                    st.markdown('''<h5 style='text-align: left; color: #1ed760;'>[+] Awesome! You have added your Hobbies</h4>''',unsafe_allow_html=True)
+                else:
+                    st.markdown('''<h5 style='text-align: left; color: #000000;'>[-] Please add Hobbies. It will show your persnality to the Recruiters and give the assurance that you are fit for this role or not.</h4>''',unsafe_allow_html=True)
+
+                if 'Achievements' in resumet:
+                    resume_score = resume_score + 20
+                    st.markdown('''<h5 style='text-align: left; color: #1ed760;'>[+] Awesome! You have added your Achievements </h4>''',unsafe_allow_html=True)
+                else:
+                    st.markdown('''<h5 style='text-align: left; color: #000000;'>[-] Please add Achievements. It will show that you are capable for the required position.</h4>''',unsafe_allow_html=True)
+
+                if 'Projects' in resumet:
+                    resume_score = resume_score + 20
+                    st.markdown('''<h5 style='text-align: left; color: #1ed760;'>[+] Awesome! You have added your Projects</h4>''',unsafe_allow_html=True)
+                else:
+                    st.markdown('''<h5 style='text-align: left; color: #000000;'>[-] Please add Projects. It will show that you have done work related the required position or not.</h4>''',unsafe_allow_html=True)
+
+                st.subheader('**Resume Score:-**')
+                st.markdown("""<style>.stProgress>div>div>div>div{background-color:#d73b5c;}</style>""",unsafe_allow_html=True)
+                my_bar=st.progress(0)
+                score=0
+                for p in range(resume_score):
+                    score+=1
+                    time.sleep(0.1)
+                    my_bar.progress(p+1)
+                st.success('Your Resume Writing Score: '+str(score))
+                st.warning('**Note:This score is calculated based on the Resume that you have uploaded**')
+                st.balloons()
+                insert_data(resumedata['name'], resumedata['email'], str(resume_score), timestamp,str(resumedata['no_of_pages']), reco_field, candl, str(resumedata['skills']),str(recommended_skills), str(rec_course))
+                #resume writing video
+                st.header('**Bonus Video for Resume Writing tip**')
+                resume_vid=random.choice(resume_videos)
+                res_vid_title=fetch_yt_video(resume_vid)
+                st.subheader("✅ **"+res_vid_title+"**")
+                st.video(resume_vid)
+                 ## Interview Preparation Video
+                st.header("**Bonus Video for Interview Tips💡**")
+                interview_vid = random.choice(interview_videos)
+                int_vid_title = fetch_yt_video(interview_vid)
+                st.subheader("✅ **" + int_vid_title + "**")
+                st.video(interview_vid)
+
+                connection.commit()
+            else:
+                st.error('Something went wrong..')
+    else:
+        st.success('Welcome to Admin Side')
+        ad_user=st.text_input('Username')
+        ad_pass=st.text_input('Password',type='password')
+        if st.button('Login'):
+            if ad_user=='admin' and ad_pass=='admin123':
+                st.success('Welcome admin')
+                data=cursor.fetchall()
+                st.subheader('''**User's Data**''')
+                df=pd.DataFrame(data,column=['ID','Name','Email','Resume Score','TimeStamp','Total Page','Predicted Field','User Level','Actuall Skills','Recommended Skills','Recommended Courses'])
+                st.dataframe(df)
+                st.markdown(get_table_download_link(df,'User_data.csv','Download Report'),unsafe_allow_html=True)
+                ##admin side Data
+                query='Select * from user_data'
+                plot_data=pd.read_sql(query,connection)
+                labels=plot_data.Predicted_Field.unique()
+                print(labels)
+                values = plot_data.Predicted_Field.value_counts()
+                print(values)
+                st.subheader("**Pie-Chart for Predicted Field Recommendation**")
+                fig = px.pie(df, values=values, names=labels, title='Predicted Field according to the Skills')
+                st.plotly_chart(fig)
+                labels = plot_data.User_level.unique()
+                values = plot_data.User_level.value_counts()
+                st.subheader("**Pie-Chart for User's Experienced Level**")
+                fig = px.pie(df, values=values, names=labels, title="Pie-Chart📈 for User's👨‍💻 Experienced Level")
+                st.plotly_chart(fig)
+
+
+            else:
+                st.error("Wrong ID & Password Provided")
+run()
